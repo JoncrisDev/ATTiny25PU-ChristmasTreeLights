@@ -13,34 +13,15 @@
 
 #include "LightsController.h"
 
-
-// Setup the ports for the chipz
+// Setup the IO ports
 inline void Setup_Ports() {
 
-	// Pin 1 and pin 3 as outputs.
-	DDRB |= ((1 << DDB3) | (1 << DDB1) | (1 << DDB0));
+	// PB0(MCU pin 5), PB1(MCU pin 6) and PB3(MCU pin 2) as outputs.
+	DDRB |= ((1 << DDB0) | (1 << DDB1) | (1 << DDB3));
 
-	
-	// pin 0 as an input with an internal pull-up
-	//DDRB &= ~(1 << DDB0);
-	//PORTB |= (1 << PB0);
-
-	// pin 4 as an input with an internal pull-up
+	// PB4(MCU pin 3) as an input with an internal pull-up
 	DDRB &= ~(1 << DDB4);
-	PORTB |= (1 << PB4);
-
-	// Enable interrupts on PCINT4
-	//GIMSK |= (1 << PCIE);
-	//PCMSK |= (1 << PCINT4);
-
-
-	// [DISABLE THE INTERRUPTS FOR A MOMENT]
-	// Enable interrupt masks. on PB0
-	//DDRB |= (1 << DDB0);
-	//PORTB |= (1 << PB0);
-	//GIMSK |= (1 << PCIE);
-	//PCMSK |= (1 << PCINT0);
-	//sei();
+	PORTB |= (1 << BUTTON0);
 }
 
 // Reset the current Mode and activate the next mode along in the modes Array
@@ -53,10 +34,9 @@ void SwapOutMode(struct LEDMode * mode) {
 	}
 	// Increment Global Mode Index.
 	CurrentModeID++;
-	if (CurrentModeID > (NUM_MODES -1)) {
+	if (CurrentModeID > (NUM_MODES - 1)) {
 		CurrentModeID = 0;
 	}
-	
 }
 
 // Reset a Line to Initial State (Turn off active Pins)
@@ -81,7 +61,7 @@ void RunMode(struct LEDMode * mode) {
 	if(mode->line_2.bEnabled == TRUE) { RunLine(&mode->line_2); }
 }
 
-// Run A Line Within the mode 
+// Run a Line from the mode 
 void RunLine(struct LEDLine * Line) {
 
 	// Toggle	
@@ -113,8 +93,6 @@ void RunLine(struct LEDLine * Line) {
 	// Pulse-Width Modulation Fade
 	if ( (Line->bIsFade == TRUE) && ((Line->bFadingUp == TRUE) || (Line->bFadingDown == TRUE)) ) {
 		
-		//PORTB &= ~(1 << PB0);
-
 		// non-inverting 8 bit pwm
 		TCCR0A |= (1 << COM0A1) | (1 << WGM01) | (1 << WGM00);
 		//  Clock select (clk I/O / no scale)
@@ -122,7 +100,9 @@ void RunLine(struct LEDLine * Line) {
 
 		// Compare Match A
 		TIMSK = (1 << OCIE0A) | (1 << OCIE1A);
-		DDRB |= (1 << PB0) | (1 << PB5);
+
+		// Toggle pin
+		DDRB |= (1 << Line->Pin); 
 
 		if (Line->bFadingUp == TRUE) {
 
@@ -147,28 +127,30 @@ void RunLine(struct LEDLine * Line) {
 				Line->ElapsedTimeInState = 0;
 				Line->bIsHigh = FALSE;
 			}
-
 		}
-		
 	}
 	
 	Line->ElapsedTimeInState++;
 
 }
 
+// Entry point
 int main (void)
 {
 
 	struct LEDMode modes[NUM_MODES];
+
 	/* set board io port */
 	Setup_Ports();
 
+	/*
+	* Example LED display program.
+	*/
 	// Mode 1
 	modes[0].line_1.bEnabled = TRUE;
 	modes[0].line_1.bIsFade = FALSE;
 	modes[0].line_1.TimeIsOn = 500;
 	modes[0].line_1.TimeIsOff = 500;
-	//modes[0].line_1.bIsHigh = TRUE; // hmmm
 	modes[0].line_1.Pin = LED0;
 	modes[0].line_2.bEnabled = FALSE;
 
@@ -178,12 +160,12 @@ int main (void)
 	modes[1].line_1.TimeIsOn = 500;
 	modes[1].line_1.TimeIsOff = 500;
 	modes[1].line_1.Pin = LED1;
+
 	modes[1].line_2.bEnabled = TRUE;
 	modes[1].line_2.bIsFade = FALSE;
 	modes[1].line_2.TimeIsOn = 2000;
 	modes[1].line_2.TimeIsOff = 600;
-	modes[1].line_2.Pin = PB0;
-
+	modes[1].line_2.Pin = LED0;
 
 	// Mode 3 PWM Fade
 	modes[2].line_1.bEnabled = TRUE;
@@ -193,42 +175,35 @@ int main (void)
 	modes[2].line_1.TimeFadeUp = 5000;
 	modes[2].line_1.TimeFadeDown = 200;
 	modes[2].line_1.bFadingUp = TRUE;
+	modes[2].line_1.Pin = LED0;
 
+	/**********************************/	
 	
-	// 8 Seconds
-	const int ProgramCycleTime = 8000;
 	int ButtonHoldTime = 0;
 
 	while (1) {
-
 		
-		// DEBUG - Cycle the programs.
-		//for (int cnt = 0; cnt < ProgramCycleTime; ++cnt) {
-			RunMode(&modes[CurrentModeID]);
-			_delay_ms(1);
+		RunMode(&modes[CurrentModeID]);
+		_delay_ms(1);
 
-			// Button control
-			if(GetPinLevel(BUTTON0) == BUTTON_DOWN) {
+		// Button control
+		if(GetPinLevel(BUTTON0) == BUTTON_DOWN) {
 
-				if (ButtonHoldTime > HOLD_TIME_POWER_DWON) {
-					ButtonHoldTime = 0;
-					MCU_PowerDown();
-				}
-				ButtonHoldTime++;
-				ButtonPrevState = BUTTON_DOWN;
-
-				
-			} else if ((ButtonPrevState == BUTTON_DOWN) && (ButtonHoldTime > HOLD_TIME_PROGRAM_CHANGE)) {
-				SwapOutMode(&modes[CurrentModeID]);
-				ButtonPrevState = BUTTON_UP;
+			if (ButtonHoldTime > HOLD_TIME_POWER_DWON) {
 				ButtonHoldTime = 0;
-			} else if (GetPinLevel(BUTTON0) == BUTTON_UP) {
-				ButtonPrevState = BUTTON_UP;
+				MCU_PowerDown();
 			}
+			ButtonHoldTime++;
+			ButtonPrevState = BUTTON_DOWN;
 
-			 
-		//}
-		//SwapOutMode(&modes[CurrentModeID % NUM_MODES]);
+			
+		} else if ((ButtonPrevState == BUTTON_DOWN) && (ButtonHoldTime > HOLD_TIME_PROGRAM_CHANGE)) {
+			SwapOutMode(&modes[CurrentModeID]);
+			ButtonPrevState = BUTTON_UP;
+			ButtonHoldTime = 0;
+		} else if (GetPinLevel(BUTTON0) == BUTTON_UP) {
+			ButtonPrevState = BUTTON_UP;
+		}
 	}
 
 }
@@ -239,21 +214,15 @@ ISR(PCINT0_vect) {
 	cli();
 	sleep_disable();
 	
-	//CurrentModeID++;
-	
 	CurrentModeID = 0;
 	PCMSK &= ~(0xFF);
 
-	//cli();
-	
-	//PCMSK = 0x00;
 }
-
 
 // Power Down the controller on a long button press.
 void MCU_PowerDown(void) {
 	
-	// Stop the thing turning back on again when we are trying to turn it off.
+	// Stop the MCU turning back on again when we are trying to turn it off.
 	LED_On(LED1);
 	LED_On(LED0);
 	_delay_ms(4000);
@@ -272,11 +241,4 @@ void MCU_PowerDown(void) {
 	sei();
 	sleep_cpu();
 	
-	// Resumption Instruction from wake-from-sleep (post Interrupt call.)
-	//cli();
-};
-
-
-
-
-
+}

@@ -1,9 +1,9 @@
 
-// defines for LED pins
+// Convenience defines for LED and button pins (change as desired)
 #define LED0 PB0
 #define LED1 PB1
+#define LED2 PB3
 #define BUTTON0 PB4
-// BUTTON PB0
 
 // BOOL as uint8_t
 #define TRUE							1
@@ -40,7 +40,6 @@ struct LEDMode {
 #define LED_Off(pin) (PORTB &= ~(1 << pin))
 
 // Get the Logical pin input value from a given input pin
-//#define GetPinLevel(pin) return ( (PINB & (1 << pin)) > 0 ) ? TRUE : FALSE)
 static inline BOOL GetPinLevel(uint8_t pin) { return ( (PINB & (1 << pin)) > 0 ) ? TRUE : FALSE;  }
 
 // Turn the Lights and controller off after a long button hold
